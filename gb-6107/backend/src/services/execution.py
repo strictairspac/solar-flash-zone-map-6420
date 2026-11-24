@@ -8,10 +8,31 @@ from src.constants.job_state import JobState
 from src.domain import scenario
 from src.models.cases import cases
 from src.models.runs import runs
+from src.services import readings
 from src.services.audit import record
 from src.utils.serial import content_digest
 
 logger = logging.getLogger(__name__)
+
+
+def _execute(db, task):
+    case_payload = db.scalar(select(cases.c.payload).where(cases.c.id == task["case_id"]))
+    _records, predicate = scenario.normalize(case_payload)
+
+    # 严格按入队时钉住的读数版本取页；版本已切到新版也不影响在途旧批次。
+    version_id = task["reading_version_id"]
+    version = readings.get_version(db, version_id)
+    page_map = readings.load_version_pages(db, version_id)
+    pages = [page_map[index] for index in sorted(page_map)]
+    version_records = [(row["serial"], row["power_cw"]) for row in version["records"]]
+
+    result = scenario.run_version(
+        version_records, pages, predicate, version["version_no"]
+    )
+    result["reading_version"] = {
+        "id": version["id"], "version_no": version["version_no"], "status": version["status"],
+    }
+    return result
 
 
 def service_one():
@@ -23,9 +44,8 @@ def service_one():
         task = db.execute(statement).mappings().first()
         if task is None:
             return False
-        payload = db.scalar(select(cases.c.payload).where(cases.c.id == task["case_id"]))
         try:
-            result = scenario.run(payload, task["parameter"], db)
+            result = _execute(db, task)
             output = {"status": JobState.DONE, "result": result, "digest": content_digest(result)}
         except Exception as exc:
             # Let the failed database transaction roll back before persisting the error.

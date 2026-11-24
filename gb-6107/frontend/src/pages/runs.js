@@ -6,8 +6,15 @@ import { poll } from "../hooks/poll.js";
 import { el } from "../utils/dom.js";
 import { time } from "../utils/format.js";
 
+function versionBadge(run) {
+  if (!run.reading_version_no) return el("span", {class: "muted"}, "历史批次（未钉版本）");
+  return el("span", {class: "version-badge", title: "入队时钉住的读数版本，后续更正不影响本批次"},
+    `读数版本 v${run.reading_version_no} · ${run.reading_version_status}`);
+}
+
 function reportState(run) {
   return el("div", {class: "stack", id: "run-state"}, status(run.status),
+    versionBadge(run),
     el("p", {}, run.status === "queued" ? "后台正在处理，页面会自动更新。" : run.failure || run.result?.summary),
     run.status === "done" ? el("a", {class: "button", href: `#evidence/${run.id}`}, "查看业务证据") : null);
 }
@@ -34,8 +41,10 @@ export async function runsPage(config, route, signal) {
   return el("div", {class: "page"},
     pageHeading(config.modules[2], config.parameter_label),
     latest ? section(latest.case_title, detail) : detail,
-    section("执行批次", items.length ? table(["资料", "编号", "参数", "状态", "提交时间"],
-      items.map(run => [el("a", {"data-run": run.id, href: `#runs/${run.id}`}, run.case_title), run.id,
-        run.parameter, el("span", {"data-run": run.id}, status(run.status)), time(run.created_at)]), "执行批次") :
-      empty("暂无执行记录。")));
+    section("执行批次", items.length ? table(["资料", "编号", "读数版本", "参数", "状态", "提交时间"],
+      items.map(run => [
+        el("a", {"data-run": run.id, href: `#runs/${run.id}`}, run.case_title), run.id,
+        run.reading_version_no ? `v${run.reading_version_no}` : "—",
+        run.parameter, el("span", {"data-run": run.id}, status(run.status)), time(run.created_at),
+      ]), "执行批次") : empty("暂无执行记录。")));
 }

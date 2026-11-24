@@ -5,6 +5,7 @@ from sqlalchemy import insert, select
 
 from src.domain import scenario
 from src.models.cases import cases
+from . import readings
 from .audit import record
 
 
@@ -26,7 +27,14 @@ def create(db, data, actor):
             validator(data.payload)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
-    change = db.execute(insert(cases).values(**data.model_dump(), code=f"CASE-{uuid4().hex[:12].upper()}", created_by=actor))
+    records, _predicate = scenario.normalize(data.payload)
+    page_size = data.page_size
+    change = db.execute(insert(cases).values(
+        title=data.title, description=data.description, payload=data.payload,
+        code=f"CASE-{uuid4().hex[:12].upper()}", page_size=page_size, created_by=actor,
+    ))
     case_id = change.inserted_primary_key[0]
+    # 首次闪测交班即建立 v1 页段版本，后续抽检和更正都基于它。
+    readings.create_first_version(db, case_id, records, page_size, actor)
     record(db, "create_case", actor, "case", case_id)
     return get(db, case_id)

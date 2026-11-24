@@ -44,14 +44,21 @@ export async function evidencePage(config, user, route) {
     reviewForm(run.id, data => signing.replaceChildren(signature(data))) : empty("待复核员签署。"));
   const options = el("select", {"aria-label": "选择已完成的批次", onchange: event => {
     location.hash = `evidence/${event.target.value}`;
-  }}, runs.map(item => el("option", {value: item.id, selected: item.id === run.id}, `#${item.id} ${item.case_title}`)));
+  }}, runs.map(item => el("option", {value: item.id, selected: item.id === run.id},
+    `#${item.id} ${item.case_title}（v${item.reading_version_no ?? "?"}）`)));
+  const pinned = run.result?.reading_version;
+  const versionNote = pinned ? el("p", {class: "version-note"},
+    `本回执固化入队时的读数版本 v${pinned.version_no}（${pinned.status}）：瓦数范围与缺测筛选均按该版本的 ` +
+    "Zone Map 与空值位图执行；之后即便同批更正切换新版，本回执命中的板件和跳页依据都不会被覆盖。") : null;
   return el("div", {class: "page evidence"},
     pageHeading(config.modules[3], run.case_title, button),
     issue, options,
-    el("section", {class: "feature evidence-summary"}, el("div", {}, el("h2", {}, "批次判定"), el("p", {}, run.result.summary)),
+    el("section", {class: "feature evidence-summary"},
+      el("div", {}, el("h2", {}, "批次判定"), el("p", {}, run.result.summary), versionNote),
       el("details", {}, el("summary", {}, "证据摘要"), el("code", {}, run.digest))),
     el("dl", {class: "metrics"}, Object.entries(run.result.metrics).map(([label, value]) =>
       el("div", {}, el("dt", {}, label), el("dd", {}, cell(value))))),
-    section("业务结果明细", run.result.rows.length ? resultTable(run.result.rows) : empty("此批次无明细。")),
+    section("业务结果明细（含每个页段的跳页依据）", run.result.rows.length ?
+      resultTable(run.result.rows) : empty("此批次无明细。")),
     section("复核签署", signing));
 }
